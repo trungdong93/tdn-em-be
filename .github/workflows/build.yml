@@ -1,0 +1,25 @@
+name: Build installer
+on:
+  workflow_dispatch:
+  push:
+jobs:
+  win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -B build -A x64
+      - name: Build
+        run: cmake --build build --config Release
+      - name: Make installer
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          New-Item -ItemType Directory -Force -Path stage | Out-Null
+          $v = Get-ChildItem -Path build -Recurse -Directory -Filter "*.vst3" | Select-Object -First 1
+          Copy-Item $v.FullName -Destination "stage\TDN Em Be.vst3" -Recurse
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TDN-Em-Be-Setup
+          path: Output/TDN-Em-Be-Setup.exe
