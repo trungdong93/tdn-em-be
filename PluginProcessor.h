@@ -36,7 +36,6 @@ public:
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
-    void updateFilters (float ratio);
 
     // BEGIN_DSP
     // Bo loc low-pass bac 2 (RBJ)
@@ -67,6 +66,30 @@ private:
         }
 
         void reset() { z1 = z2 = 0.0f; }
+    };
+
+    // Delay co dinh (so mau nguyen) de canh chinh pha cho phan "treble giu nguyen"
+    struct DelayLine
+    {
+        std::vector<float> buf;
+        int mask = 0, pos = 0;
+
+        void prepare (int maxDelay)
+        {
+            int size = 1;
+            while (size < maxDelay + 2) size <<= 1;
+            buf.assign ((size_t) size, 0.0f);
+            mask = size - 1;
+            pos = 0;
+        }
+
+        float process (float in, int d)
+        {
+            buf[(size_t) pos] = in;
+            const float out = buf[(size_t) ((pos - d) & mask)];
+            pos = (pos + 1) & mask;
+            return out;
+        }
     };
 
     // Doi cao do: delay-line 2 dau doc + can chinh pha (SOLA) de 2 dau cong dong pha -> giong trong, it re
@@ -166,10 +189,14 @@ private:
     };
     // END_DSP
 
+    // Tach 2 dai tai ~4.5kHz: dai tram (giong hat) moi doi cao do,
+    // dai cao (xi, s, hoi tho, khong khi) GIU NGUYEN nen khong bi "xe xe".
     std::array<Shifter, 2> shifters;
-    std::array<Biquad, 2> pre, post1, post2;
-    juce::SmoothedValue<float> ratioSmooth;
-    float windowSamples = 2048.0f;
+    std::array<Biquad, 2> lp1, lp2;          // low-pass bac 4 (2 biquad noi tiep)
+    std::array<DelayLine, 2> dryFull, dryLow;
+    juce::SmoothedValue<float> ratioSmooth, clarSmooth;
+    float windowSamples = 1322.0f;
+    int latency = 0;
     double currentSampleRate = 44100.0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BabyOldAudioProcessor)

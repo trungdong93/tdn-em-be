@@ -9,6 +9,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout BabyOldAudioProcessor::creat
         juce::ParameterID { "semitones", 1 }, "Pitch",
         juce::NormalisableRange<float> (-12.0f, 12.0f, 0.1f), 0.0f,
         juce::AudioParameterFloatAttributes().withLabel ("st")));
+    // Do trong: 100% = giu nguyen toan bo dai cao cua giong goc (trong nhat, het xe xe)
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "clarity", 1 }, "Trong",
+        juce::NormalisableRange<float> (0.0f, 100.0f, 1.0f), 100.0f,
+        juce::AudioParameterFloatAttributes().withLabel ("%")));
     return layout;
 }
 
@@ -28,45 +33,36 @@ bool BabyOldAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) 
     return in == juce::AudioChannelSet::mono() || in == juce::AudioChannelSet::stereo();
 }
 
-void BabyOldAudioProcessor::updateFilters (float r)
-{
-    const double sr = currentSampleRate;
-
-    // Truoc khi doi cao do: cat bot tan so cao de khong bi alias khi len giong
-    const double fcPre = 0.45 * sr / juce::jmax (1.0f, r);
-
-    // Sau khi doi cao do: cang len giong em be cang cat tieng xi (am s, x, ch)
-    const double t = juce::jlimit (0.0, 1.0, (double) (r - 1.0f) / 0.5);
-    const double fcPost = std::exp (std::log (0.45 * sr) * (1.0 - t) + std::log (10000.0) * t);
-
-    for (size_t c = 0; c < 2; ++c)
-    {
-        pre[c].setLowpass (sr, fcPre);
-        post1[c].setLowpass (sr, fcPost);
-        post2[c].setLowpass (sr, fcPost);
-    }
-}
-
 void BabyOldAudioProcessor::prepareToPlay (double sampleRate, int)
 {
     currentSampleRate = sampleRate;
-    windowSamples = (float) (0.030 * sampleRate);   // cua so 30ms
-    const int S = (int) (0.005 * sampleRate);       // tim khop pha +-5ms
-    const int L = (int) (0.010 * sampleRate);       // so khop tren 10ms
+    const int half = juce::jmax (8, (int) std::lround (0.015 * sampleRate));
+    windowSamples = (float) (2 * half);              // cua so ~30ms, CHAN de tre la so nguyen
+    const int S = (int) (0.005 * sampleRate);        // tim khop pha +-5ms
+    const int L = (int) (0.010 * sampleRate);        // so khop tren 10ms
     const int size = juce::nextPowerOfTwo ((int) windowSamples + 2 * S + L + 16);
     for (auto& s : shifters) s.prepare (size, S, L);
-    for (auto& f : pre)   f.reset();
-    for (auto& f : post1) f.reset();
-    for (auto& f : post2) f.reset();
 
-    setLatencySamples ((int) (windowSamples * 0.5f) + S + 2);   // DAW tu bu tre (PDC)
+    latency = half + S + 2;                          // = do tre cua shifter khi giong goc
+    setLatencySamples (latency);                     // DAW tu bu tre (PDC)
+
+    const double fc = juce::jmin (4500.0, 0.225 * sampleRate);
+    for (size_t c = 0; c < 2; ++c)
+    {
+        lp1[c].setLowpass (sampleRate, fc);
+        lp2[c].setLowpass (sampleRate, fc);
+        lp1[c].reset();
+        lp2[c].reset();
+        dryFull[c].prepare (latency + 4);
+        dryLow[c].prepare (latency + 4);
+    }
 
     float st0 = apvts.getRawParameterValue ("semitones")->load();
     if (std::abs (st0) < 0.3f) st0 = 0.0f;   // vung chet o giua: de ve dung giong goc
-    const float r0 = std::pow (2.0f, st0 / 12.0f);
     ratioSmooth.reset (sampleRate, 0.05);
-    ratioSmooth.setCurrentAndTargetValue (r0);
-    updateFilters (r0);
+    ratioSmooth.setCurrentAndTargetValue (std::pow (2.0f, st0 / 12.0f));
+    clarSmooth.reset (sampleRate, 0.03);
+    clarSmooth.setCurrentAndTargetValue (apvts.getRawParameterValue ("clarity")->load() * 0.01f);
 }
 
 void BabyOldAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
@@ -80,7 +76,7 @@ void BabyOldAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     float st = apvts.getRawParameterValue ("semitones")->load();
     if (std::abs (st) < 0.3f) st = 0.0f;   // vung chet o giua: de ve dung giong goc
     ratioSmooth.setTargetValue (std::pow (2.0f, st / 12.0f));
-    updateFilters (ratioSmooth.getCurrentValue());
+    clarSmooth.setTargetValue (apvts.getRawParameterValue ("clarity")->load() * 0.01f);
 
     const int n = buffer.getNumSamples();
     const int chans = juce::jmin (numIn, (int) shifters.size());
@@ -88,14 +84,22 @@ void BabyOldAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     for (int i = 0; i < n; ++i)
     {
         const float r = ratioSmooth.getNextValue();
+        const float clar = clarSmooth.getNextValue();
         for (int c = 0; c < chans; ++c)
         {
             float* d = buffer.getWritePointer (c);
-            float x = pre[(size_t) c].process (d[i]);
-            x = shifters[(size_t) c].process (x, r, windowSamples);
-            x = post1[(size_t) c].process (x);
-            x = post2[(size_t) c].process (x);
-            d[i] = x;
+            const float x = d[i];
+
+            // Dai tram: chi phan nay moi bi doi cao do
+            const float lo  = lp2[(size_t) c].process (lp1[(size_t) c].process (x));
+            const float wet = shifters[(size_t) c].process (lo, r, windowSamples);
+
+            // Dai cao: lay tu giong goc (tre bang shifter) -> tieng xi, hoi tho trong va tu nhien
+            const float xd  = dryFull[(size_t) c].process (x,  latency);
+            const float lod = dryLow [(size_t) c].process (lo, latency);
+            const float hi  = xd - lod;
+
+            d[i] = wet + clar * hi;
         }
     }
 }

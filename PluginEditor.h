@@ -23,7 +23,7 @@ struct KnobLook : public juce::LookAndFeel_V4
         {
             juce::Path val;
             val.addCentredArc (c.x, c.y, r, r, 0.0f, juce::jmin (mid, ang), juce::jmax (mid, ang), true);
-            g.setColour (ang > mid ? juce::Colour (0xffff9ac8) : juce::Colour (0xff7fb8ff));
+            g.setColour (ang > mid ? juce::Colour (0xffffb347) : juce::Colour (0xff7fb8ff));
             g.strokePath (val, stroke);
         }
 
@@ -57,7 +57,7 @@ struct KnobLook : public juce::LookAndFeel_V4
                                                                               : juce::String (a, 1);
                 txt = (st > 0 ? "+" : "-") + v;
             }
-            g.setColour (st > 0 ? juce::Colour (0xffff9ac8) : (st < 0 ? juce::Colour (0xff7fb8ff) : juce::Colours::white));
+            g.setColour (st > 0 ? juce::Colour (0xffffb347) : (st < 0 ? juce::Colour (0xff7fb8ff) : juce::Colours::white));
             g.setFont (juce::FontOptions (46.0f, juce::Font::bold));
             g.drawText (txt, juce::Rectangle<float> (c.x - br, c.y - 34.0f, br * 2.0f, 56.0f), juce::Justification::centred);
             g.setColour (juce::Colour (0xff9aa0b2));
@@ -77,7 +77,8 @@ class BabyOldEditor : public juce::AudioProcessorEditor
 {
 public:
     explicit BabyOldEditor (BabyOldAudioProcessor& p)
-        : AudioProcessorEditor (&p), attach (p.apvts, "semitones", knob)
+        : AudioProcessorEditor (&p), attach (p.apvts, "semitones", knob),
+          clarityAttach (p.apvts, "clarity", clarity)
     {
         knob.setLookAndFeel (&look);
         knob.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
@@ -86,7 +87,19 @@ public:
                                   juce::MathConstants<float>::pi * 2.75f, true);
         knob.setDoubleClickReturnValue (true, 0.0);   // double-click = ve giua (giong that)
         addAndMakeVisible (knob);
-        setSize (360, 420);
+
+        clarity.setSliderStyle (juce::Slider::LinearHorizontal);
+        clarity.setTextBoxStyle (juce::Slider::TextBoxRight, false, 56, 22);
+        clarity.setTextValueSuffix (" %");
+        clarity.setDoubleClickReturnValue (true, 100.0);
+        clarity.setColour (juce::Slider::trackColourId, juce::Colour (0xff7fb8ff));
+        clarity.setColour (juce::Slider::backgroundColourId, juce::Colour (0xff343846));
+        clarity.setColour (juce::Slider::thumbColourId, juce::Colours::white);
+        clarity.setColour (juce::Slider::textBoxTextColourId, juce::Colours::white);
+        clarity.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+        addAndMakeVisible (clarity);
+
+        setSize (360, 470);
     }
 
     ~BabyOldEditor() override { knob.setLookAndFeel (nullptr); }
@@ -106,16 +119,27 @@ public:
         g.setFont (juce::FontOptions (18.0f, juce::Font::bold));
         g.setColour (juce::Colour (0xff7fb8ff));
         g.drawText (juce::String (juce::CharPointer_UTF8 ("ÔNG GIÀ")),
-                    20, getHeight() - 50, 140, 26, juce::Justification::left);
-        g.setColour (juce::Colour (0xffff9ac8));
+                    20, 372, 140, 26, juce::Justification::left);
+        g.setColour (juce::Colour (0xffffb347));
         g.drawText (juce::String (juce::CharPointer_UTF8 ("EM BÉ")),
-                    getWidth() - 160, getHeight() - 50, 140, 26, juce::Justification::right);
+                    getWidth() - 160, 372, 140, 26, juce::Justification::right);
+
+        g.setColour (juce::Colour (0xff9aa0b2));
+        g.setFont (juce::FontOptions (14.0f));
+        g.drawText (juce::String (juce::CharPointer_UTF8 ("Độ trong (100% = hết xè xè)")),
+                    20, 408, getWidth() - 40, 20, juce::Justification::left);
     }
 
-    void resized() override { knob.setBounds (30, 68, 300, 300); }
+    void resized() override
+    {
+        knob.setBounds (30, 68, 300, 300);
+        clarity.setBounds (20, 430, getWidth() - 40, 28);
+    }
 
 private:
     KnobLook look;
     juce::Slider knob;
     juce::AudioProcessorValueTreeState::SliderAttachment attach;
+    juce::Slider clarity;
+    juce::AudioProcessorValueTreeState::SliderAttachment clarityAttach;
 };
