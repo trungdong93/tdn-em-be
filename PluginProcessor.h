@@ -38,8 +38,6 @@ private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
     void updateFilters (float ratio);
 
-    static constexpr float maxSemitones = 8.0f;   // nut van toi da +-8 ban cung
-
     // BEGIN_DSP
     // Bo loc low-pass bac 2 (RBJ)
     struct Biquad

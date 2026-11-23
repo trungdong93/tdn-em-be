@@ -4,10 +4,11 @@
 juce::AudioProcessorValueTreeState::ParameterLayout BabyOldAudioProcessor::createLayout()
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
-    // -1 = ong gia, 0 = giong that, +1 = em be
+    // Don vi: ban cung. -12 = ong gia (thap 1 quang tam), 0 = giong that, +12 = em be (cao 1 quang tam)
     layout.add (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "morph", 1 }, "Baby - Old",
-        juce::NormalisableRange<float> (-1.0f, 1.0f, 0.001f), 0.0f));
+        juce::ParameterID { "semitones", 1 }, "Pitch",
+        juce::NormalisableRange<float> (-12.0f, 12.0f, 0.1f), 0.0f,
+        juce::AudioParameterFloatAttributes().withLabel ("st")));
     return layout;
 }
 
@@ -60,9 +61,9 @@ void BabyOldAudioProcessor::prepareToPlay (double sampleRate, int)
 
     setLatencySamples ((int) (windowSamples * 0.5f) + S + 2);   // DAW tu bu tre (PDC)
 
-    float m0 = apvts.getRawParameterValue ("morph")->load();
-    if (std::abs (m0) < 0.03f) m0 = 0.0f;   // vung chet o giua: de ve dung giong goc
-    const float r0 = std::pow (2.0f, m0 * maxSemitones / 12.0f);
+    float st0 = apvts.getRawParameterValue ("semitones")->load();
+    if (std::abs (st0) < 0.3f) st0 = 0.0f;   // vung chet o giua: de ve dung giong goc
+    const float r0 = std::pow (2.0f, st0 / 12.0f);
     ratioSmooth.reset (sampleRate, 0.05);
     ratioSmooth.setCurrentAndTargetValue (r0);
     updateFilters (r0);
@@ -76,9 +77,9 @@ void BabyOldAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     for (int c = numIn; c < getTotalNumOutputChannels(); ++c)
         buffer.clear (c, 0, buffer.getNumSamples());
 
-    float morph = apvts.getRawParameterValue ("morph")->load();
-    if (std::abs (morph) < 0.03f) morph = 0.0f;   // vung chet o giua: de ve dung giong goc
-    ratioSmooth.setTargetValue (std::pow (2.0f, morph * maxSemitones / 12.0f));
+    float st = apvts.getRawParameterValue ("semitones")->load();
+    if (std::abs (st) < 0.3f) st = 0.0f;   // vung chet o giua: de ve dung giong goc
+    ratioSmooth.setTargetValue (std::pow (2.0f, st / 12.0f));
     updateFilters (ratioSmooth.getCurrentValue());
 
     const int n = buffer.getNumSamples();

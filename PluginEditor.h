@@ -5,7 +5,7 @@
 struct KnobLook : public juce::LookAndFeel_V4
 {
     void drawRotarySlider (juce::Graphics& g, int x, int y, int w, int h, float pos,
-                           float startA, float endA, juce::Slider&) override
+                           float startA, float endA, juce::Slider& slider) override
     {
         auto b = juce::Rectangle<float> ((float) x, (float) y, (float) w, (float) h).reduced (10.0f);
         const float r = juce::jmin (b.getWidth(), b.getHeight()) * 0.5f;
@@ -43,6 +43,29 @@ struct KnobLook : public juce::LookAndFeel_V4
         g.setColour (juce::Colour (0xff12131a));
         g.drawEllipse (c.x - br, c.y - br, br * 2.0f, br * 2.0f, 3.0f);
 
+        // So ban cung ngay giua nut
+        {
+            double st = slider.getValue();
+            if (std::abs (st) < 0.3) st = 0.0;
+            juce::String txt;
+            if (st == 0.0)
+                txt = "0";
+            else
+            {
+                const double a = std::abs (st);
+                const juce::String v = (std::abs (a - std::round (a)) < 0.05) ? juce::String ((int) std::round (a))
+                                                                              : juce::String (a, 1);
+                txt = (st > 0 ? "+" : "-") + v;
+            }
+            g.setColour (st > 0 ? juce::Colour (0xffff9ac8) : (st < 0 ? juce::Colour (0xff7fb8ff) : juce::Colours::white));
+            g.setFont (juce::FontOptions (46.0f, juce::Font::bold));
+            g.drawText (txt, juce::Rectangle<float> (c.x - br, c.y - 34.0f, br * 2.0f, 56.0f), juce::Justification::centred);
+            g.setColour (juce::Colour (0xff9aa0b2));
+            g.setFont (juce::FontOptions (14.0f));
+            g.drawText (juce::String (juce::CharPointer_UTF8 ("bán cung")),
+                        juce::Rectangle<float> (c.x - br, c.y + 22.0f, br * 2.0f, 20.0f), juce::Justification::centred);
+        }
+
         juce::Path p;
         p.addRoundedRectangle (-4.0f, -br + 10.0f, 8.0f, br * 0.42f, 4.0f);
         g.setColour (juce::Colours::white);
@@ -54,7 +77,7 @@ class BabyOldEditor : public juce::AudioProcessorEditor
 {
 public:
     explicit BabyOldEditor (BabyOldAudioProcessor& p)
-        : AudioProcessorEditor (&p), attach (p.apvts, "morph", knob)
+        : AudioProcessorEditor (&p), attach (p.apvts, "semitones", knob)
     {
         knob.setLookAndFeel (&look);
         knob.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
