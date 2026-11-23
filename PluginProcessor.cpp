@@ -14,6 +14,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout BabyOldAudioProcessor::creat
         juce::ParameterID { "clarity", 1 }, "Trong",
         juce::NormalisableRange<float> (0.0f, 100.0f, 1.0f), 100.0f,
         juce::AudioParameterFloatAttributes().withLabel ("%")));
+    // Khu xi: 0% = tat (nhu cu), cao hon = bot xi / e e / tieng gio o dai cao nhung van giu do trong
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "deess", 1 }, "Khu xi",
+        juce::NormalisableRange<float> (0.0f, 100.0f, 1.0f), 50.0f,
+        juce::AudioParameterFloatAttributes().withLabel ("%")));
     return layout;
 }
 
@@ -57,6 +62,14 @@ void BabyOldAudioProcessor::prepareToPlay (double sampleRate, int)
         dryLow[c].prepare (latency + 4);
     }
 
+    // He so cho bo khu xi (phu thuoc sample rate)
+    hiLpCoef = 1.0f - std::exp (-2.0f * juce::MathConstants<float>::pi * (float) juce::jmin (7000.0, 0.4 * sampleRate) / (float) sampleRate);
+    envAtk   = 1.0f - std::exp (-1.0f / (0.0005f * (float) sampleRate));   // 0.5 ms
+    envRel   = 1.0f - std::exp (-1.0f / (0.040f  * (float) sampleRate));   // 40 ms
+    gainDn   = 1.0f - std::exp (-1.0f / (0.0010f * (float) sampleRate));   // giam gain nhanh 1 ms
+    gainUp   = 1.0f - std::exp (-1.0f / (0.0300f * (float) sampleRate));   // hoi gain 30 ms
+    hiLp = { 0.0f, 0.0f }; hiEnv = { 0.0f, 0.0f }; hiGain = { 1.0f, 1.0f };
+
     float st0 = apvts.getRawParameterValue ("semitones")->load();
     if (std::abs (st0) < 0.3f) st0 = 0.0f;   // vung chet o giua: de ve dung giong goc
     ratioSmooth.reset (sampleRate, 0.05);
@@ -78,6 +91,10 @@ void BabyOldAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     ratioSmooth.setTargetValue (std::pow (2.0f, st / 12.0f));
     clarSmooth.setTargetValue (apvts.getRawParameterValue ("clarity")->load() * 0.01f);
 
+    const float ds   = apvts.getRawParameterValue ("deess")->load() * 0.01f;
+    const float thr  = 0.15f * std::pow (0.1f, ds);   // nguong nen xi: -16 dB (0%) -> -36 dB (100%)
+    const float flr  = 0.004f * ds + 1.0e-6f;         // san tieng gio: duoi muc nay thi gate nhe
+
     const int n = buffer.getNumSamples();
     const int chans = juce::jmin (numIn, (int) shifters.size());
 
@@ -97,9 +114,27 @@ void BabyOldAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
             // Dai cao: lay tu giong goc (tre bang shifter) -> tieng xi, hoi tho trong va tu nhien
             const float xd  = dryFull[(size_t) c].process (x,  latency);
             const float lod = dryLow [(size_t) c].process (lo, latency);
-            const float hi  = xd - lod;
+            const float hi0 = xd - lod;
 
-            d[i] = wet + clar * hi;
+            // Khu xi: (1) lam diu dai cao, (2) nen dong khi xi qua to, (3) gate nhe tieng gio/e e luc im
+            auto& lpS = hiLp[(size_t) c];
+            lpS += hiLpCoef * (hi0 - lpS);
+            const float hi = hi0 + ds * (lpS - hi0);
+
+            auto& env = hiEnv[(size_t) c];
+            const float ae = std::abs (hi);
+            env += (ae > env ? envAtk : envRel) * (ae - env);
+
+            float gt = 1.0f;
+            if (ds > 0.001f)
+            {
+                if (env > thr)      gt = std::pow (thr / env, 0.8f * ds);
+                else if (env < flr) gt = juce::jmax (0.1f, std::pow (env / flr, ds));
+            }
+            auto& g = hiGain[(size_t) c];
+            g += (gt < g ? gainDn : gainUp) * (gt - g);
+
+            d[i] = wet + clar * hi * g;
         }
     }
 }

@@ -73,12 +73,32 @@ struct KnobLook : public juce::LookAndFeel_V4
     }
 };
 
+// Nut mui ten: bam de an / hien 2 thanh chinh (mui ten xuong = dang mo, sang phai = dang an)
+struct ArrowToggle : public juce::Button
+{
+    ArrowToggle() : juce::Button ("arrowToggle") { setClickingTogglesState (true); }
+
+    void paintButton (juce::Graphics& g, bool over, bool) override
+    {
+        auto b = getLocalBounds().toFloat();
+        const auto c = b.getCentre();
+        g.setColour (over ? juce::Colours::white : juce::Colour (0xff9aa0b2));
+        juce::Path tri;
+        if (getToggleState())   // dang mo -> mui ten xuong
+            tri.addTriangle (c.x - 7.0f, c.y - 4.0f, c.x + 7.0f, c.y - 4.0f, c.x, c.y + 6.0f);
+        else                    // dang an -> mui ten sang phai
+            tri.addTriangle (c.x - 4.0f, c.y - 7.0f, c.x - 4.0f, c.y + 7.0f, c.x + 6.0f, c.y);
+        g.fillPath (tri);
+    }
+};
+
 class BabyOldEditor : public juce::AudioProcessorEditor
 {
 public:
     explicit BabyOldEditor (BabyOldAudioProcessor& p)
         : AudioProcessorEditor (&p), attach (p.apvts, "semitones", knob),
-          clarityAttach (p.apvts, "clarity", clarity)
+          clarityAttach (p.apvts, "clarity", clarity),
+          deessAttach (p.apvts, "deess", deess)
     {
         knob.setLookAndFeel (&look);
         knob.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
@@ -99,7 +119,22 @@ public:
         clarity.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
         addAndMakeVisible (clarity);
 
-        setSize (360, 470);
+        deess.setSliderStyle (juce::Slider::LinearHorizontal);
+        deess.setTextBoxStyle (juce::Slider::TextBoxRight, false, 56, 22);
+        deess.setTextValueSuffix (" %");
+        deess.setDoubleClickReturnValue (true, 50.0);
+        deess.setColour (juce::Slider::trackColourId, juce::Colour (0xffffb347));
+        deess.setColour (juce::Slider::backgroundColourId, juce::Colour (0xff343846));
+        deess.setColour (juce::Slider::thumbColourId, juce::Colours::white);
+        deess.setColour (juce::Slider::textBoxTextColourId, juce::Colours::white);
+        deess.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+        addAndMakeVisible (deess);
+
+        arrow.setToggleState (true, juce::dontSendNotification);   // mac dinh: dang mo
+        arrow.onClick = [this] { updateLayoutState(); };
+        addAndMakeVisible (arrow);
+
+        updateLayoutState();
     }
 
     ~BabyOldEditor() override { knob.setLookAndFeel (nullptr); }
@@ -126,20 +161,42 @@ public:
 
         g.setColour (juce::Colour (0xff9aa0b2));
         g.setFont (juce::FontOptions (14.0f));
-        g.drawText (juce::String (juce::CharPointer_UTF8 ("Độ trong (100% = hết xè xè)")),
-                    20, 408, getWidth() - 40, 20, juce::Justification::left);
+        g.drawText (juce::String (juce::CharPointer_UTF8 ("Tùy chỉnh giọng")),
+                    44, 402, 200, 26, juce::Justification::left);
+
+        if (arrow.getToggleState())
+        {
+            g.drawText (juce::String (juce::CharPointer_UTF8 ("Độ trong (100% = hết xè xè)")),
+                        20, 436, getWidth() - 40, 20, juce::Justification::left);
+            g.drawText (juce::String (juce::CharPointer_UTF8 ("Khử xì (kéo lên để bớt xì, è è)")),
+                        20, 494, getWidth() - 40, 20, juce::Justification::left);
+        }
     }
 
     void resized() override
     {
         knob.setBounds (30, 68, 300, 300);
-        clarity.setBounds (20, 430, getWidth() - 40, 28);
+        arrow.setBounds (14, 402, 26, 26);
+        clarity.setBounds (20, 458, getWidth() - 40, 28);
+        deess.setBounds (20, 516, getWidth() - 40, 28);
     }
 
 private:
+    void updateLayoutState()
+    {
+        const bool open = arrow.getToggleState();
+        clarity.setVisible (open);
+        deess.setVisible (open);
+        setSize (360, open ? 560 : 436);   // dong lai thi cua so thap xuong
+        repaint();
+    }
+
     KnobLook look;
     juce::Slider knob;
     juce::AudioProcessorValueTreeState::SliderAttachment attach;
     juce::Slider clarity;
     juce::AudioProcessorValueTreeState::SliderAttachment clarityAttach;
+    juce::Slider deess;
+    juce::AudioProcessorValueTreeState::SliderAttachment deessAttach;
+    ArrowToggle arrow;
 };

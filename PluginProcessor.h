@@ -195,6 +195,9 @@ private:
     std::array<Biquad, 2> lp1, lp2;          // low-pass bac 4 (2 biquad noi tiep)
     std::array<DelayLine, 2> dryFull, dryLow;
     juce::SmoothedValue<float> ratioSmooth, clarSmooth;
+    // Khu xi: xu ly rieng dai cao (xi, e e) bang loc + nen dong + gate nhe
+    std::array<float, 2> hiLp { 0.0f, 0.0f }, hiEnv { 0.0f, 0.0f }, hiGain { 1.0f, 1.0f };
+    float hiLpCoef = 0.5f, envAtk = 0.1f, envRel = 0.001f, gainDn = 0.01f, gainUp = 0.001f;
     float windowSamples = 1322.0f;
     int latency = 0;
     double currentSampleRate = 44100.0;
