@@ -198,6 +198,15 @@ private:
     // Khu xi: xu ly rieng dai cao (xi, e e) bang loc + nen dong + gate nhe
     std::array<float, 2> hiLp { 0.0f, 0.0f }, hiEnv { 0.0f, 0.0f }, hiGain { 1.0f, 1.0f };
     float hiLpCoef = 0.5f, envAtk = 0.1f, envRel = 0.001f, gainDn = 0.01f, gainUp = 0.001f;
+    // Sang / Am: bo can bang dai tong (tilt) quanh ~800 Hz. Am = tang tram + bot cao, Sang = nguoc lai
+    std::array<float, 2> tiltLp { 0.0f, 0.0f };
+    float tiltA = 0.1f, tiltSm = 0.001f, tiltGL = 1.0f, tiltGH = 1.0f;
+    // Cat duoi: cong im lang tren toan bo dau ra, do bang muc vao (da canh theo do tre) -> het duoi / nen / e e sau khi ngung noi
+    DelayLine gateDelay;
+    float gateEnv = 0.0f, gateGain = 1.0f;
+    bool gateOpenState = true;
+    int gateLead = 0;
+    float gateAtk = 0.1f, gateRel = 0.001f, gateUp = 0.1f, gateDown = 0.001f;
     float windowSamples = 1322.0f;
     int latency = 0;
     double currentSampleRate = 44100.0;

@@ -96,9 +96,11 @@ class BabyOldEditor : public juce::AudioProcessorEditor
 {
 public:
     explicit BabyOldEditor (BabyOldAudioProcessor& p)
-        : AudioProcessorEditor (&p), attach (p.apvts, "semitones", knob),
+        : AudioProcessorEditor (&p), proc (p), attach (p.apvts, "semitones", knob),
           clarityAttach (p.apvts, "clarity", clarity),
-          deessAttach (p.apvts, "deess", deess)
+          deessAttach (p.apvts, "deess", deess),
+          warmthAttach (p.apvts, "warmth", warmth),
+          gateAttach (p.apvts, "gate", gate)
     {
         knob.setLookAndFeel (&look);
         knob.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
@@ -130,8 +132,31 @@ public:
         deess.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
         addAndMakeVisible (deess);
 
-        arrow.setToggleState (true, juce::dontSendNotification);   // mac dinh: dang mo
-        arrow.onClick = [this] { updateLayoutState(); };
+        warmth.setSliderStyle (juce::Slider::LinearHorizontal);
+        warmth.setTextBoxStyle (juce::Slider::TextBoxRight, false, 56, 22);
+        warmth.setTextValueSuffix (" %");
+        warmth.setDoubleClickReturnValue (true, 0.0);   // double-click = ve giua (giu nguyen)
+        warmth.setColour (juce::Slider::trackColourId, juce::Colour (0xffff8a5c));
+        warmth.setColour (juce::Slider::backgroundColourId, juce::Colour (0xff343846));
+        warmth.setColour (juce::Slider::thumbColourId, juce::Colours::white);
+        warmth.setColour (juce::Slider::textBoxTextColourId, juce::Colours::white);
+        warmth.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+        addAndMakeVisible (warmth);
+
+        gate.setSliderStyle (juce::Slider::LinearHorizontal);
+        gate.setTextBoxStyle (juce::Slider::TextBoxRight, false, 56, 22);
+        gate.setTextValueSuffix (" %");
+        gate.setDoubleClickReturnValue (true, 50.0);
+        gate.setColour (juce::Slider::trackColourId, juce::Colour (0xff6fe3a1));
+        gate.setColour (juce::Slider::backgroundColourId, juce::Colour (0xff343846));
+        gate.setColour (juce::Slider::thumbColourId, juce::Colours::white);
+        gate.setColour (juce::Slider::textBoxTextColourId, juce::Colours::white);
+        gate.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+        addAndMakeVisible (gate);
+
+        // Nho trang thai lan truoc: thu mui ten lai thi lan sau mo plugin van dang thu
+        arrow.setToggleState (loadOpenState(), juce::dontSendNotification);
+        arrow.onClick = [this] { updateLayoutState(); saveOpenState (arrow.getToggleState()); };
         addAndMakeVisible (arrow);
 
         updateLayoutState();
@@ -170,6 +195,10 @@ public:
                         20, 436, getWidth() - 40, 20, juce::Justification::left);
             g.drawText (juce::String (juce::CharPointer_UTF8 ("Khử xì (kéo lên để bớt xì, è è)")),
                         20, 494, getWidth() - 40, 20, juce::Justification::left);
+            g.drawText (juce::String (juce::CharPointer_UTF8 ("Ấm ← 0 → Sáng (kéo trái ấm hơn, phải sáng hơn)")),
+                        20, 552, getWidth() - 40, 20, juce::Justification::left);
+            g.drawText (juce::String (juce::CharPointer_UTF8 ("Cắt đuôi (kéo lên cho sạch tiếng kéo theo)")),
+                        20, 610, getWidth() - 40, 20, juce::Justification::left);
         }
     }
 
@@ -179,6 +208,8 @@ public:
         arrow.setBounds (14, 402, 26, 26);
         clarity.setBounds (20, 458, getWidth() - 40, 28);
         deess.setBounds (20, 516, getWidth() - 40, 28);
+        warmth.setBounds (20, 574, getWidth() - 40, 28);
+        gate.setBounds (20, 632, getWidth() - 40, 28);
     }
 
 private:
@@ -187,10 +218,38 @@ private:
         const bool open = arrow.getToggleState();
         clarity.setVisible (open);
         deess.setVisible (open);
-        setSize (360, open ? 560 : 436);   // dong lai thi cua so thap xuong
+        warmth.setVisible (open);
+        gate.setVisible (open);
+        setSize (360, open ? 676 : 436);   // dong lai thi cua so thap xuong
         repaint();
     }
 
+    // Luu trang thai an / hien: vua vao file chung (moi lan mo plugin) vua vao state cua project
+    static juce::File uiPrefFile()
+    {
+        return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+                   .getChildFile ("TDN Em Be").getChildFile ("ui.txt");
+    }
+
+    bool loadOpenState()
+    {
+        auto f = uiPrefFile();
+        if (f.existsAsFile())
+            return f.loadFileAsString().trim() != "0";
+        if (proc.apvts.state.hasProperty ("uiOpen"))
+            return (bool) proc.apvts.state.getProperty ("uiOpen");
+        return true;   // lan dau tien: mo san
+    }
+
+    void saveOpenState (bool open)
+    {
+        proc.apvts.state.setProperty ("uiOpen", open, nullptr);
+        auto f = uiPrefFile();
+        f.getParentDirectory().createDirectory();
+        f.replaceWithText (open ? "1" : "0");
+    }
+
+    BabyOldAudioProcessor& proc;
     KnobLook look;
     juce::Slider knob;
     juce::AudioProcessorValueTreeState::SliderAttachment attach;
@@ -198,5 +257,9 @@ private:
     juce::AudioProcessorValueTreeState::SliderAttachment clarityAttach;
     juce::Slider deess;
     juce::AudioProcessorValueTreeState::SliderAttachment deessAttach;
+    juce::Slider warmth;
+    juce::AudioProcessorValueTreeState::SliderAttachment warmthAttach;
+    juce::Slider gate;
+    juce::AudioProcessorValueTreeState::SliderAttachment gateAttach;
     ArrowToggle arrow;
 };
