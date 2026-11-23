@@ -40,6 +40,7 @@ private:
 
     static constexpr float maxSemitones = 8.0f;   // nut van toi da +-8 ban cung
 
+    // BEGIN_DSP
     // Bo loc low-pass bac 2 (RBJ)
     struct Biquad
     {
@@ -70,25 +71,32 @@ private:
         void reset() { z1 = z2 = 0.0f; }
     };
 
-    // Doi cao do bang delay-line 2 dau doc, noi suy cubic
+    // Doi cao do: delay-line 2 dau doc + can chinh pha (SOLA) de 2 dau cong dong pha -> giong trong, it re
     struct Shifter
     {
         std::vector<float> buf;
         int mask = 0;
         int writePos = 0;
-        float phase = 0.0f;
+        float p[2] = { 0.0f, 0.5f };   // pha cua 2 dau doc
+        float a[2] = { 0.0f, 0.0f };   // do lech can chinh (mau)
+        int S = 0;                     // pham vi tim kiem +-S mau
+        int L = 0;                     // do dai doan so khop (mau)
 
-        void prepare (int size)
+        void prepare (int size, int searchSamples, int matchSamples)
         {
             buf.assign ((size_t) size, 0.0f);
             mask = size - 1;
             writePos = 0;
-            phase = 0.0f;
+            p[0] = 0.0f; p[1] = 0.5f;
+            a[0] = a[1] = 0.0f;
+            S = searchSamples;
+            L = matchSamples;
         }
 
-        float tap (float p, float W) const
+        float delayOf (int i, float W) const { return p[i] * W + (float) S + 2.0f + a[i]; }
+
+        float tap (float delay) const
         {
-            const float delay = p * W + 2.0f;
             const float rp = (float) writePos - delay;
             const int i = (int) std::floor (rp);
             const float f = rp - (float) i;
@@ -107,27 +115,58 @@ private:
 
         static float win (float p)
         {
-            const float s = std::sin (juce::MathConstants<float>::pi * p);
+            const float s = std::sin (3.14159265f * p);
             return s * s;
+        }
+
+        // Khi dau doc i quay lai dau cua so (luc do trong so = 0, khong nghe thay),
+        // chon do lech sao cho doan giong moi khop pha nhat voi dau doc con lai.
+        void realign (int i, float W)
+        {
+            const int j = 1 - i;
+            const int posJ = writePos - (int) std::lround (delayOf (j, W));
+            const float dnom = p[i] * W + (float) S + 2.0f;
+
+            double best = -1.0e30;
+            int bestA = 0;
+            for (int c = -S; c <= S; ++c)
+            {
+                const int posI = writePos - (int) std::lround (dnom + (float) c);
+                double dot = 0.0, e = 1.0e-9;
+                for (int m = 0; m < L; ++m)
+                {
+                    const float xi = buf[(size_t) ((posI - m) & mask)];
+                    dot += (double) xi * (double) buf[(size_t) ((posJ - m) & mask)];
+                    e += (double) xi * (double) xi;
+                }
+                const double sc = dot / std::sqrt (e);
+                if (sc > best) { best = sc; bestA = c; }
+            }
+            a[i] = (float) bestA;
         }
 
         float process (float in, float ratio, float W)
         {
             buf[(size_t) writePos] = in;
 
-            const float p0 = phase;
-            float p1 = phase + 0.5f;
-            if (p1 >= 1.0f) p1 -= 1.0f;
+            const float out = tap (delayOf (0, W)) * win (p[0])
+                            + tap (delayOf (1, W)) * win (p[1]);
 
-            const float out = tap (p0, W) * win (p0) + tap (p1, W) * win (p1);
-
-            phase += (1.0f - ratio) / W;
-            phase -= std::floor (phase);
-
+            const float inc = (1.0f - ratio) / W;
             writePos = (writePos + 1) & mask;
+
+            for (int i = 0; i < 2; ++i)
+            {
+                p[i] += inc;
+                bool wrapped = false;
+                if (p[i] >= 1.0f)      { p[i] -= 1.0f; wrapped = true; }
+                else if (p[i] < 0.0f)  { p[i] += 1.0f; wrapped = true; }
+                if (wrapped) realign (i, W);
+            }
             return out;
         }
     };
+    // END_DSP
 
     std::array<Shifter, 2> shifters;
     std::array<Biquad, 2> pre, post1, post2;

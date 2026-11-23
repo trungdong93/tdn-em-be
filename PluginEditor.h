@@ -27,6 +27,14 @@ struct KnobLook : public juce::LookAndFeel_V4
             g.strokePath (val, stroke);
         }
 
+        // Vach chia giua (can bang) o vi tri 12 gio
+        {
+            const float inner = r - 10.0f, outer = r + 9.0f;
+            g.setColour (juce::Colours::white);
+            g.drawLine (c.x + std::sin (mid) * inner, c.y - std::cos (mid) * inner,
+                        c.x + std::sin (mid) * outer, c.y - std::cos (mid) * outer, 3.0f);
+        }
+
         const float br = r - 24.0f;
         juce::ColourGradient grad (juce::Colour (0xff4f5468), c.x - br * 0.5f, c.y - br * 0.6f,
                                    juce::Colour (0xff1e2029), c.x + br * 0.6f, c.y + br * 0.7f, true);
